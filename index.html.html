@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>コンデンサー充放電 理論シミュレーター</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    .table-container { max-height: 400px; overflow-y: auto; }
+    th { position: sticky; top: 0; background-color: #f8fafc; z-index: 10; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen p-4 md:p-6">
+
+  <div class="max-w-7xl mx-auto space-y-6">
+    <!-- Header -->
+    <header class="bg-white rounded-2xl shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border border-slate-200">
+      <div class="flex items-center gap-4">
+        <div class="p-3 bg-emerald-600 text-white rounded-xl shadow-inner shrink-0">
+          <i class="ph ph-function text-3xl"></i>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-slate-900">理論シミュレーター</h1>
+          <p id="app-description" class="text-sm text-slate-500">設定した実験条件から、理論式に基づく電圧・電流の変化を計算します。</p>
+        </div>
+      </div>
+      
+      <!-- 共通パラメータ設定 -->
+      <div class="flex gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200 w-full md:w-auto">
+        <div class="flex-1 md:flex-none">
+          <label class="block text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><i class="ph ph-wave-sine text-orange-500"></i> 抵抗 R</label>
+          <div class="flex items-center gap-1">
+            <input type="number" id="param-r" value="100" class="w-full md:w-24 px-2 py-2 md:py-1 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500 text-right text-lg">
+            <span class="text-sm text-slate-600 font-semibold">kΩ</span>
+          </div>
+        </div>
+        <div class="flex-1 md:flex-none">
+          <label class="block text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><i class="ph ph-intersect text-blue-500"></i> 容量 C</label>
+          <div class="flex items-center gap-1">
+            <input type="number" id="param-c" value="100" class="w-full md:w-24 px-2 py-2 md:py-1 border border-slate-300 rounded focus:ring-2 focus:ring-emerald-500 text-right text-lg">
+            <span class="text-sm text-slate-600 font-semibold">μF</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- タブ切り替え -->
+    <div class="flex space-x-2 border-b border-slate-300 pb-px overflow-x-auto">
+      <button onclick="setMode('charge')" id="tab-charge" class="px-6 py-3 bg-white border-t border-l border-r border-slate-300 rounded-t-lg font-bold text-blue-600 relative top-px whitespace-nowrap">
+        <i class="ph ph-battery-charging mr-1"></i>充電シミュレーション
+      </button>
+      <button onclick="setMode('discharge')" id="tab-discharge" class="px-6 py-3 bg-slate-100 border border-slate-200 rounded-t-lg font-semibold text-slate-500 hover:bg-slate-50 whitespace-nowrap">
+        <i class="ph ph-battery-empty mr-1"></i>放電シミュレーション
+      </button>
+    </div>
+
+    <!-- 設定・回路エリア全体を囲むコンテナ -->
+    <div class="bg-white border border-slate-200 border-t-0 rounded-b-2xl rounded-tr-2xl shadow-sm">
+      
+      <!-- 回路図 & 説明エリア -->
+      <div class="p-5 border-b border-slate-100 flex flex-col md:flex-row items-center gap-6">
+        <!-- SVG 回路図エリア -->
+        <div class="w-full md:w-1/3 flex justify-center bg-slate-50 rounded-xl p-6 border border-slate-200">
+          
+          <!-- 充電時の回路図 -->
+          <svg id="svg-charge" viewBox="0 0 360 200" class="w-full max-w-[280px] h-auto">
+            <path d="M 50,150 L 50,50 L 250,50 L 250,150 Z" stroke="#334155" stroke-width="3" fill="none" />
+            
+            <!-- 電源 E -->
+            <rect x="40" y="90" width="20" height="20" fill="#f8fafc" />
+            <line x1="30" y1="95" x2="70" y2="95" stroke="#334155" stroke-width="4" />
+            <line x1="40" y1="105" x2="60" y2="105" stroke="#334155" stroke-width="6" />
+            <text x="15" y="105" font-size="18" font-family="sans-serif" font-weight="bold" fill="#334155">E</text>
+            
+            <!-- 抵抗 R -->
+            <rect x="125" y="40" width="50" height="20" fill="white" stroke="#334155" stroke-width="3" />
+            <text x="142" y="30" font-size="18" font-family="sans-serif" font-weight="bold" fill="#334155">R</text>
+
+            <!-- コンデンサー C -->
+            <rect x="240" y="90" width="20" height="20" fill="#f8fafc" />
+            <line x1="230" y1="95" x2="270" y2="95" stroke="#334155" stroke-width="4" />
+            <line x1="230" y1="105" x2="270" y2="105" stroke="#334155" stroke-width="4" />
+            <text x="280" y="105" font-size="18" font-family="sans-serif" font-weight="bold" fill="#334155">C</text>
+            
+            <!-- Vc (両矢印) -->
+            <g stroke="#3b82f6" fill="#3b82f6">
+              <line x1="310" y1="85" x2="310" y2="115" stroke-width="2" />
+              <!-- 上向き矢印 -->
+              <polygon points="310,80 305,90 315,90" />
+              <!-- 下向き矢印 -->
+              <polygon points="310,120 305,110 315,110" />
+              <text x="320" y="105" font-size="16" font-family="sans-serif" font-weight="bold">Vc</text>
+            </g>
+
+            <!-- 電流 I (時計回り) -->
+            <g stroke="#ef4444" fill="#ef4444">
+              <path d="M 70,30 L 100,30" stroke-width="2" />
+              <polygon points="100,30 92,25 92,35" />
+              <text x="80" y="20" font-size="16" font-family="sans-serif" font-weight="bold">I</text>
+            </g>
+          </svg>
+
+          <!-- 放電時の回路図 (初期は非表示) -->
+          <svg id="svg-discharge" viewBox="0 0 360 200" class="w-full max-w-[280px] h-auto hidden">
+            <!-- 電源なし。導線のみ。 -->
+            <path d="M 100,150 L 100,50 L 250,50 L 250,150 Z" stroke="#334155" stroke-width="3" fill="none" />
+            
+            <!-- 抵抗 R -->
+            <rect x="150" y="40" width="50" height="20" fill="white" stroke="#334155" stroke-width="3" />
+            <text x="167" y="30" font-size="18" font-family="sans-serif" font-weight="bold" fill="#334155">R</text>
+
+            <!-- コンデンサー C -->
+            <rect x="240" y="90" width="20" height="20" fill="#f8fafc" />
+            <line x1="230" y1="95" x2="270" y2="95" stroke="#334155" stroke-width="4" />
+            <line x1="230" y1="105" x2="270" y2="105" stroke="#334155" stroke-width="4" />
+            <text x="280" y="105" font-size="18" font-family="sans-serif" font-weight="bold" fill="#334155">C</text>
+            
+            <!-- Vc (両矢印) -->
+            <g stroke="#3b82f6" fill="#3b82f6">
+              <line x1="310" y1="85" x2="310" y2="115" stroke-width="2" />
+              <!-- 上向き矢印 -->
+              <polygon points="310,80 305,90 315,90" />
+              <!-- 下向き矢印 -->
+              <polygon points="310,120 305,110 315,110" />
+              <text x="320" y="105" font-size="16" font-family="sans-serif" font-weight="bold">Vc</text>
+            </g>
+
+            <!-- 電流 I (反時計回り) -->
+            <g stroke="#ef4444" fill="#ef4444">
+              <path d="M 230,30 L 200,30" stroke-width="2" />
+              <polygon points="200,30 208,25 208,35" />
+              <text x="210" y="20" font-size="16" font-family="sans-serif" font-weight="bold">I</text>
+            </g>
+          </svg>
+
+        </div>
+        
+        <div class="w-full md:w-2/3 space-y-3">
+          <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <i class="ph ph-circuitry text-emerald-500 text-2xl"></i> <span id="circuit-title">充電回路モデル</span>
+          </h2>
+          <p id="circuit-desc" class="text-sm text-slate-600 leading-relaxed">
+            直流電源を接続し、コンデンサーを充電します。電流 I は時計回りに流れ、コンデンサーの電圧 Vc は時間とともに上昇します。
+          </p>
+          
+          <!-- 追加したアドバイス文 -->
+          <p class="text-xs text-slate-600 font-semibold bg-slate-100 p-2.5 rounded-lg border border-slate-200">
+            <i class="ph-fill ph-lightbulb text-yellow-500 text-sm mr-1 relative top-[2px]"></i>
+            以下の関係式において、<span class="text-slate-800">定数（実験条件/初期条件）</span>はどれで、<span class="text-slate-800">測定値</span>はどれで、<span class="text-slate-800">計算して求めたいもの</span>はどれなのかを意識してみよう。
+          </p>
+
+          <div class="bg-blue-50 p-3 rounded-lg border border-blue-100 flex flex-col">
+            <span class="text-xs font-bold text-blue-500 mb-1">キルヒホッフの第2法則による関係式</span>
+            <span id="circuit-eq" class="text-sm text-blue-800 font-mono font-bold tracking-wider">E = R · I + Vc</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 条件設定エリア (最大3つ) -->
+      <div class="p-5 space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          <div class="border-2 border-blue-200 bg-blue-50/30 rounded-xl p-5 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+            <span class="font-bold text-blue-700 flex items-center gap-1 mb-3"><div class="w-3 h-3 rounded-full bg-blue-600"></div> データ 1</span>
+            <label class="block text-sm font-bold text-slate-600 mb-2">電源電圧 E:</label>
+            <div class="flex items-center gap-2">
+              <input type="number" id="v1" value="1.5" step="0.1" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-right text-xl font-mono">
+              <span class="text-lg font-bold text-slate-500">V</span>
+            </div>
+          </div>
+
+          <div class="border-2 border-green-200 bg-green-50/30 rounded-xl p-5 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
+            <span class="font-bold text-green-700 flex items-center gap-1 mb-3"><div class="w-3 h-3 rounded-full bg-green-600"></div> データ 2</span>
+            <label class="block text-sm font-bold text-slate-600 mb-2">電源電圧 E:</label>
+            <div class="flex items-center gap-2">
+              <input type="number" id="v2" value="3.0" step="0.1" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 text-right text-xl font-mono" placeholder="空欄でスキップ">
+              <span class="text-lg font-bold text-slate-500">V</span>
+            </div>
+          </div>
+
+          <div class="border-2 border-red-200 bg-red-50/30 rounded-xl p-5 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+            <span class="font-bold text-red-700 flex items-center gap-1 mb-3"><div class="w-3 h-3 rounded-full bg-red-600"></div> データ 3</span>
+            <label class="block text-sm font-bold text-slate-600 mb-2">電源電圧 E:</label>
+            <div class="flex items-center gap-2">
+              <input type="number" id="v3" value="4.5" step="0.1" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 text-right text-xl font-mono" placeholder="空欄でスキップ">
+              <span class="text-lg font-bold text-slate-500">V</span>
+            </div>
+          </div>
+
+        </div>
+
+        <button onclick="runSimulation()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-4 px-4 rounded-xl shadow transition-colors flex justify-center items-center gap-2 text-lg">
+          <i class="ph ph-play-circle text-2xl"></i> シミュレーションを実行
+        </button>
+      </div>
+    </div>
+
+    <div id="results-area" class="hidden space-y-6">
+
+      <!-- 電圧グラフ -->
+      <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 mt-6">
+        <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="ph ph-chart-line text-blue-500 text-xl"></i> <span id="voltage-chart-title">電圧 Vc の時間変化</span></h2>
+        <div class="relative w-full h-[400px]">
+          <canvas id="voltageChart"></canvas>
+        </div>
+      </div>
+
+      <h2 class="text-lg font-bold mt-8 flex items-center gap-2"><i class="ph ph-table text-xl text-slate-500"></i> シミュレーション データテーブル (0.1秒間隔)</h2>
+      
+      <div class="flex space-x-2 border-b border-slate-300 overflow-x-auto" id="table-tabs">
+        <button onclick="showTable(1)" id="tbtn-1" class="hidden px-6 py-3 bg-white border-t border-l border-r border-slate-300 rounded-t-lg font-bold text-blue-600 whitespace-nowrap">データ 1</button>
+        <button onclick="showTable(2)" id="tbtn-2" class="hidden px-6 py-3 bg-slate-100 border border-slate-200 rounded-t-lg font-semibold text-slate-500 hover:bg-slate-50 whitespace-nowrap">データ 2</button>
+        <button onclick="showTable(3)" id="tbtn-3" class="hidden px-6 py-3 bg-slate-100 border border-slate-200 rounded-t-lg font-semibold text-slate-500 hover:bg-slate-50 whitespace-nowrap">データ 3</button>
+      </div>
+
+      <div class="bg-white border border-t-0 border-slate-300 rounded-b-xl shadow-sm">
+        <div id="table-view-1" class="hidden table-container rounded-b-xl"></div>
+        <div id="table-view-2" class="hidden table-container rounded-b-xl"></div>
+        <div id="table-view-3" class="hidden table-container rounded-b-xl"></div>
+      </div>
+
+      <!-- 電流グラフ -->
+      <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200 mt-8">
+        <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="ph ph-lightning text-yellow-500 text-xl"></i> <span id="current-chart-title">電流 I の時間変化</span></h2>
+        <p id="discharge-note" class="hidden text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100 mb-4 flex items-center gap-2">
+          <i class="ph ph-info text-lg"></i>放電時は逆向きに電流が流れるため、マイナスの値で表示されます。
+        </p>
+        <div class="relative w-full h-[300px]">
+          <canvas id="currentChart"></canvas>
+        </div>
+      </div>
+
+      <!-- サマリー (一番下に移動) -->
+      <h2 class="text-lg font-bold mt-8 flex items-center gap-2"><i class="ph ph-sigma text-xl text-slate-500"></i> 理論値サマリー</h2>
+      <div id="summary-cards" class="grid grid-cols-1 md:grid-cols-3 gap-4 pb-8">
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    let currentMode = 'charge';
+    let voltageChartInstance = null;
+    let currentChartInstance = null;
+    let simResults = [];
+
+    const colors = [
+      { border: '#2563eb', bg: 'rgba(37, 99, 235, 0.1)', text: 'text-blue-700' },
+      { border: '#16a34a', bg: 'rgba(22, 163, 74, 0.1)', text: 'text-green-700' },
+      { border: '#dc2626', bg: 'rgba(220, 38, 38, 0.1)', text: 'text-red-700' }
+    ];
+
+    function setMode(mode) {
+      if (currentMode === mode) return;
+      currentMode = mode;
+
+      const tCharge = document.getElementById('tab-charge');
+      const tDischarge = document.getElementById('tab-discharge');
+      const dNote = document.getElementById('discharge-note');
+      
+      const cTitle = document.getElementById('circuit-title');
+      const cDesc = document.getElementById('circuit-desc');
+      const cEq = document.getElementById('circuit-eq');
+      const svgCharge = document.getElementById('svg-charge');
+      const svgDischarge = document.getElementById('svg-discharge');
+      
+      if (mode === 'charge') {
+        tCharge.className = "px-6 py-3 bg-white border-t border-l border-r border-slate-300 rounded-t-lg font-bold text-blue-600 relative top-px whitespace-nowrap";
+        tDischarge.className = "px-6 py-3 bg-slate-100 border border-slate-200 rounded-t-lg font-semibold text-slate-500 hover:bg-slate-50 whitespace-nowrap";
+        dNote.classList.add('hidden');
+        
+        cTitle.innerText = '充電回路モデル';
+        cDesc.innerHTML = '直流電源を接続し、コンデンサーを充電します。電流 I は時計回りに流れ、コンデンサーの電圧 Vc は時間とともに上昇します。';
+        cEq.innerText = 'E = R · I + Vc';
+        svgCharge.classList.remove('hidden');
+        svgDischarge.classList.add('hidden');
+      } else {
+        tDischarge.className = "px-6 py-3 bg-white border-t border-l border-r border-slate-300 rounded-t-lg font-bold text-purple-600 relative top-px whitespace-nowrap";
+        tCharge.className = "px-6 py-3 bg-slate-100 border border-slate-200 rounded-t-lg font-semibold text-slate-500 hover:bg-slate-50 whitespace-nowrap";
+        dNote.classList.remove('hidden');
+        
+        cTitle.innerText = '放電回路モデル';
+        cDesc.innerHTML = '電源を切り離し、充電されたコンデンサーから放電します。コンデンサーが電源の役割を果たし、電流 I は反時計回りに流れます。';
+        cEq.innerText = '0 = R · I + Vc (これをIについて解くと、マイナスになるということは、充電のときとは逆向きに電流が流れることを意味している。)';
+        svgCharge.classList.add('hidden');
+        svgDischarge.classList.remove('hidden');
+      }
+
+      if(simResults.length > 0) runSimulation();
+    }
+
+    function runSimulation() {
+      const R_kohm = parseFloat(document.getElementById('param-r').value);
+      const C_uF = parseFloat(document.getElementById('param-c').value);
+      
+      if(isNaN(R_kohm) || isNaN(C_uF) || R_kohm <= 0 || C_uF <= 0) {
+        alert("抵抗またはコンデンサーの値を正しく入力してください。");
+        return;
+      }
+
+      const R = R_kohm * 1000;
+      const C = C_uF * 0.000001;
+      const tau = R * C;
+      
+      const t_max = tau * 5; 
+      const dt = 0.1; // 完全に0.1秒刻みに固定
+      const steps = Math.floor(t_max / dt);
+      
+      simResults = [];
+
+      for (let i = 1; i <= 3; i++) {
+        const eStr = document.getElementById(`v${i}`).value;
+        if (!eStr || eStr.trim() === '') continue;
+        
+        const E = parseFloat(eStr);
+        if (isNaN(E) || E <= 0) continue;
+
+        const Q_theory = C * E * 1000000;
+        const rows = [];
+        let sumQ = 0;
+
+        for (let step = 0; step <= steps; step++) {
+          const t = step * dt;
+          let Vc = 0, I = 0;
+
+          if (currentMode === 'charge') {
+            Vc = E * (1 - Math.exp(-t / tau));
+            I = (E / R) * Math.exp(-t / tau);
+          } else {
+            Vc = E * Math.exp(-t / tau);
+            I = -(E / R) * Math.exp(-t / tau);
+          }
+
+          const dq = I * dt;
+          sumQ += dq;
+
+          rows.push({
+            t: t,
+            Vc: Vc,
+            dt: dt,
+            I_uA: I * 1000000,
+            dq_uC: dq * 1000000,
+            sumQ_uC: sumQ * 1000000
+          });
+        }
+
+        simResults.push({ id: i, label: `データ ${i} (${E}V)`, tau: tau, Q_theory: Q_theory, E: E, rows: rows, color: colors[i-1] });
+      }
+
+      if (simResults.length === 0) {
+        alert("有効な電源電圧が設定されていません。");
+        return;
+      }
+
+      document.getElementById('results-area').classList.remove('hidden');
+      renderSummary();
+      drawCharts();
+      renderTables();
+      showTable(simResults[0].id);
+    }
+
+    function renderSummary() {
+      const container = document.getElementById('summary-cards');
+      let html = '';
+      simResults.forEach(res => {
+        html += `
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative overflow-hidden flex flex-col justify-center">
+          <div class="absolute top-0 left-0 w-1 h-full" style="background-color: ${res.color.border}"></div>
+          <h3 class="font-bold ${res.color.text} mb-3 border-b border-slate-100 pb-2">${res.label}</h3>
+          <div class="space-y-3">
+            <div class="flex justify-between items-end">
+              <span class="text-xs font-semibold text-slate-400">理論総電荷量 Q (C×E)</span>
+              <span class="text-2xl font-bold text-slate-800">${res.Q_theory.toFixed(1)} <span class="text-sm font-normal text-slate-500">μC</span></span>
+            </div>
+          </div>
+        </div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function drawCharts() {
+      const modeText = currentMode === 'charge' ? '（充電時）' : '（放電時）';
+      document.getElementById('voltage-chart-title').innerText = `電圧 Vc の時間変化 ${modeText}`;
+      document.getElementById('current-chart-title').innerText = `電流 I の時間変化 ${modeText}`;
+
+      const maxE = Math.max(...simResults.map(res => res.E));
+      const vDatasets = [], iDatasets = [];
+
+      simResults.forEach(res => {
+        vDatasets.push({
+          label: res.label,
+          data: res.rows.map(r => ({ x: r.t, y: r.Vc })),
+          borderColor: res.color.border,
+          backgroundColor: 'transparent',
+          borderWidth: 3,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          tension: 0.4
+        });
+
+        iDatasets.push({
+          label: res.label,
+          data: res.rows.map(r => ({ x: r.t, y: r.I_uA })),
+          borderColor: res.color.border,
+          backgroundColor: res.color.bg,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          fill: true,
+          tension: 0.4
+        });
+      });
+
+      if (voltageChartInstance) voltageChartInstance.destroy();
+      voltageChartInstance = new Chart(document.getElementById('voltageChart'), {
+        type: 'line', 
+        data: { datasets: vDatasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { 
+            legend: { position: 'top' },
+            tooltip: { mode: 'nearest', intersect: false, callbacks: { label: function(c) { return `${c.dataset.label}: ${c.parsed.y.toFixed(3)} V (${c.parsed.x.toFixed(1)} s)`; } } }
+          },
+          scales: {
+            x: { type: 'linear', title: { display: true, text: '時間 t (秒)' } },
+            y: { title: { display: true, text: '電圧 Vc (V)' }, suggestedMin: 0, suggestedMax: maxE * 1.1 }
+          }
+        }
+      });
+
+      if (currentChartInstance) currentChartInstance.destroy();
+      currentChartInstance = new Chart(document.getElementById('currentChart'), {
+        type: 'line',
+        data: { datasets: iDatasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { 
+            legend: { position: 'top' },
+            tooltip: { mode: 'nearest', intersect: false, callbacks: { label: function(c) { return `${c.dataset.label}: ${c.parsed.y.toFixed(2)} μA (${c.parsed.x.toFixed(1)} s)`; } } }
+          },
+          scales: {
+            x: { type: 'linear', title: { display: true, text: '時間 t (秒)' } },
+            y: { title: { display: true, text: '電流 I (μA)' } }
+          }
+        }
+      });
+    }
+
+    function renderTables() {
+      for(let i=1; i<=3; i++){
+        document.getElementById(`tbtn-${i}`).classList.add('hidden');
+        document.getElementById(`table-view-${i}`).classList.add('hidden');
+      }
+
+      simResults.forEach(res => {
+        const id = res.id;
+        document.getElementById(`tbtn-${id}`).classList.remove('hidden');
+        
+        let tHtml = `<table class="w-full text-right text-sm whitespace-nowrap">`;
+        tHtml += `
+          <thead class="text-slate-600 border-b border-slate-300">
+            <tr>
+              <th class="py-2 px-3">時間<br><span class="text-xs font-normal">t (s)</span></th>
+              <th class="py-2 px-3 text-blue-700">電圧<br><span class="text-xs font-normal">Vc (V)</span></th>
+              <th class="py-2 px-3 bg-slate-100">時間差<br><span class="text-xs font-normal">Δt (s)</span></th>
+              <th class="py-2 px-3 bg-slate-100 text-blue-700">電流<br><span class="text-xs font-normal">I (μA)</span></th>
+              <th class="py-2 px-3 bg-slate-100 text-orange-600">電荷<br><span class="text-xs font-normal">Δq (μC)</span></th>
+              <th class="py-2 px-3 bg-yellow-50 text-yellow-800">累積電荷<br><span class="text-xs font-normal">Σq (μC)</span></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 font-mono text-xs">
+        `;
+        
+        res.rows.forEach(r => {
+          tHtml += `
+            <tr class="hover:bg-slate-100 transition-colors">
+              <td class="py-1 px-3 text-slate-700">${r.t.toFixed(1)}</td>
+              <td class="py-1 px-3 font-bold text-blue-600">${r.Vc.toFixed(3)}</td>
+              <td class="py-1 px-3 bg-slate-50/50 text-slate-500">${r.dt.toFixed(1)}</td>
+              <td class="py-1 px-3 bg-slate-50/50 font-bold text-blue-600">${r.I_uA.toFixed(2)}</td>
+              <td class="py-1 px-3 bg-slate-50/50 font-bold text-orange-500">${r.dq_uC.toFixed(3)}</td>
+              <td class="py-1 px-3 bg-yellow-50/30 font-bold text-yellow-700">${r.sumQ_uC.toFixed(1)}</td>
+            </tr>
+          `;
+        });
+        tHtml += `</tbody></table>`;
+        
+        document.getElementById(`table-view-${id}`).innerHTML = tHtml;
+      });
+    }
+
+    function showTable(showId) {
+      simResults.forEach(res => {
+        const id = res.id;
+        const btn = document.getElementById(`tbtn-${id}`);
+        const view = document.getElementById(`table-view-${id}`);
+        
+        if (id === showId) {
+          view.classList.remove('hidden');
+          btn.className = `px-6 py-3 bg-white border-t border-l border-r border-slate-300 rounded-t-lg font-bold ${colors[id-1].text} relative top-px z-10 whitespace-nowrap`;
+        } else {
+          view.classList.add('hidden');
+          btn.className = `px-6 py-3 bg-slate-100 border border-slate-200 rounded-t-lg font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer whitespace-nowrap`;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
